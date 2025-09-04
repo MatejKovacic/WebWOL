@@ -21,7 +21,7 @@ PASSWORD = os.getenv('APP_PASSWORD', 'changeme')
 SECRET_KEY = os.getenv('APP_SESSION_KEY', None)
 if not SECRET_KEY:
     SECRET_KEY = os.urandom(32)
-SESSION_TIMEOUT = 15 * 60  # 20 minutes
+SESSION_TIMEOUT = 15 * 60  # 15 minutes
 WOL_CMD = os.getenv('APP_WOL_CMD', 'wakeonlan')
 
 # ---------------- App ----------------
@@ -68,7 +68,7 @@ def load_entries():
                     continue
                 mac = parts[0].strip().upper()
                 name = parts[1].strip()
-                ip = parts[2].strip() if len(parts) > 2 else '255.255.255.255'
+                ip = parts[2].strip() if len(parts) > 2 and parts[2].strip() else '255.255.255.255'
                 port = int(parts[3].strip()) if len(parts) > 3 and parts[3].strip().isdigit() else 9
                 rows.append({'mac': mac, 'name': name, 'ip': ip, 'port': port})
     except Exception as e:
@@ -191,6 +191,23 @@ function updateTimer() {
 }
 setInterval(updateTimer, 1000);
 updateTimer();
+
+// ---------------- Dynamic Search ----------------
+document.addEventListener('DOMContentLoaded', function(){
+    const searchInput = document.getElementById('search');
+    if(searchInput){
+        searchInput.addEventListener('input', function(){
+            const filter = searchInput.value.toLowerCase();
+            document.querySelectorAll('table tr').forEach(function(row, idx){
+                if(idx === 0) return; // skip header
+                const text = Array.from(row.querySelectorAll('td'))
+                                  .map(td => td.innerText.toLowerCase())
+                                  .join(' ');
+                row.style.display = text.includes(filter) ? '' : 'none';
+            });
+        });
+    }
+});
 </script>
 </body>
 </html>
@@ -232,16 +249,16 @@ button { border:none; background:#444; font-weight:bold; cursor:pointer; }
 """
 
 # ---------------- Routes ----------------
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/login', methods=['GET','POST'])
 def login():
-    if request.method == 'POST':
-        u = request.form.get('username', '')
-        p = request.form.get('password', '')
-        if hmac.compare_digest(u, USERNAME) and hmac.compare_digest(p, PASSWORD):
-            session['logged_in'] = True
-            session['last_active'] = time.time()
+    if request.method=='POST':
+        u=request.form.get('username','')
+        p=request.form.get('password','')
+        if hmac.compare_digest(u,USERNAME) and hmac.compare_digest(p,PASSWORD):
+            session['logged_in']=True
+            session['last_active']=time.time()
             return redirect(url_for('index'))
-        flash("Invalid username or password", "error")
+        flash("Invalid username or password","error")
     return render_template_string(LOGIN_HTML)
 
 @app.route('/logout')
@@ -300,7 +317,7 @@ def edit():
     if err:
         content = f"<div class='card error'>{html.escape(err)}</div>"
         return render_template_string(BASE_HTML, content=content, timeout=SESSION_TIMEOUT)
-    if request.method == 'POST':
+    if request.method=='POST':
         action = request.form.get('action')
         if action=='add':
             name = request.form.get('name','').strip()
