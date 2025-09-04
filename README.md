@@ -1,7 +1,9 @@
 # WebWOL
-WebWOL is a web interface to wake devices from sleep mode with Wake-on-LAN magic packets.
+WebWOL is a web interface to wake devices from sleep mode with Wake-on-LAN magic packets. It is mobile friendly and written in Python 3.
 
 <img width="1143" height="741" alt="image" src="https://github.com/user-attachments/assets/02eb2547-ba91-4f79-a1eb-9932b4cc4bf7" />
+
+<img width="1277" height="764" alt="image" src="https://github.com/user-attachments/assets/75d3f031-82a0-438e-b815-6df93fa5a4bd" />
 
 ## Installation
 
