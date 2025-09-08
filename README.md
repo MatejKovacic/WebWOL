@@ -1,7 +1,19 @@
 # WebWoL
-WebWoL is a web interface to wake devices from sleep mode with Wake-on-LAN magic packets. It is written in Python 3.
+WebWoL is a web interface to wake devices from sleep mode with Wake-on-LAN magic packets. It is written in Python.
+
+## What is it?
+
+Suppose you have several computers in your office and you need to access them remotely. But some of them are powered off.
+
+Would you need to go to the office physically? Or call someone in the middle of the night to turn them on?
+
+Well, there is a solution. You can wake them remotely. Wake-on-LAN is a computer networking standard that allows a computer to be turned on or awakened from sleep mode by a network message.
+
+Of course, computer that you want to awaken must be on the same local network, but you can run wake command via web interface - remotely.
 
 <img width="1282" height="786" alt="03_main_screen" src="https://github.com/user-attachments/assets/23b91058-8475-4c81-8a4f-f9dd6a8723ab" />
+
+You can install this application on a small device (for instance RaspberryPi), which is accessible remotely (via VPN), and then you can wake computers rwmotely - with a single click.
 
 ## Features
 - After the first login, password change is required (default password is `changeme`).
