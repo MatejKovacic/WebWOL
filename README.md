@@ -31,9 +31,19 @@ sudo chown -R webwol:webwol /opt/webwol/data
 sudo chmod 700 /opt/webwol/data
 ```
 
-Create virtual Python environment:
+Next create virtual Python environment.
+
+On Debian/Ubuntu systems, you need to install the `python3-venv` package first:
 ```
 apt install python3.12-venv
+```
+On Raspbian:
+```
+apt-get install python3-venv
+```
+
+Then:
+```
 sudo -u webwol python3 -m venv /opt/webwol/venv
 sudo -u webwol /opt/webwol/venv/bin/pip install wakeonlan flask flask-wtf werkzeug
 ```
