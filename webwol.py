@@ -8,10 +8,12 @@
 # - Default password is "changeme". After first login, password change is required.
 # - Password length validation implemented (8 characters minimum), however, there are no password complexity requirements implemented.
 # - Password is stored in hashed form (PBKDF2 with SHA256 with unique per-password salt).
+# - Enforced strict file permissions (chmod 600) to prevent LAN read and implemented auto healing file permissions.
 # - You can set/reset the password from terminal: "python3 webwol.py --set-password".
 # - Login rate limiting implemented (3 failed attempts per IP, if exceeded, IP is blocked for 5 minutes).
 # - Rate limiting is in-memory only - it resets when you restart the app.
 # - Implemented security headers that prevent basic attacks like MIME sniffing and clickjacking and only allows scripts, styles, and images from your server.
+# - HTTP-only and SameSite attributes set on session cookie.
 # - Validation of IP and port fields when adding/editing entries.
 #
 # TO DO:
@@ -46,19 +48,38 @@ if not SECRET_KEY:
     SECRET_KEY = os.urandom(32)
 
 SESSION_TIMEOUT = 15 * 60  # 15 minutes
-WOL_CMD = os.getenv("APP_WOL_CMD", "wakeonlan")
+
+DATA_FILE = os.path.expanduser("/opt/webwol/data/servers.txt")
+PASSWORD_FILE = os.path.expanduser("/opt/webwol/data/password.txt")
+
+# ---------------- Enforce strict files permissions ----------------
+def enforce_file_permissions():
+    """Self-heal file permissions for critical files."""
+    for file_path in [PASSWORD_FILE, DATA_FILE]:
+        if os.path.exists(file_path):
+            try:
+                os.chmod(file_path, 0o600)
+            except Exception as e:
+                print(f"Warning: Failed to set permissions for {file_path}: {e}")
 
 # ---------------- App ----------------
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
+# --- Session cookie hardening ---
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+# Do NOT set SESSION_COOKIE_SECURE because we do not use HTTPS
+
 # ---------------- Password Management ----------------
 def ensure_password_file():
-    """Ensure password file exists with default 'changeme'."""
+    """Ensure password file exists with default 'changeme' and strict permissions."""
+    folder = os.path.dirname(PASSWORD_FILE)
+    os.makedirs(folder, exist_ok=True)
     if not os.path.exists(PASSWORD_FILE):
-        os.makedirs(os.path.dirname(PASSWORD_FILE), exist_ok=True)
         with open(PASSWORD_FILE, "w", encoding="utf-8") as f:
             f.write(generate_password_hash("changeme"))
+    os.chmod(PASSWORD_FILE, 0o600)  # Owner read/write only
 
 
 def load_password():
@@ -72,10 +93,12 @@ def load_password():
 
 
 def save_password(new_password):
-    """Save new hashed password to file."""
-    os.makedirs(os.path.dirname(PASSWORD_FILE), exist_ok=True)
+    """Save new hashed password to file with strict permissions."""
+    folder = os.path.dirname(PASSWORD_FILE)
+    os.makedirs(folder, exist_ok=True)
     with open(PASSWORD_FILE, "w", encoding="utf-8") as f:
         f.write(generate_password_hash(new_password))
+    os.chmod(PASSWORD_FILE, 0o600)
 
 
 def cli_set_password():
@@ -122,12 +145,13 @@ def validate_ip(ip_str):
 
 
 def ensure_data_file():
+    """Ensure servers data file exists and has strict permissions."""
     folder = os.path.dirname(DATA_FILE)
-    if not os.path.exists(folder):
-        os.makedirs(folder, exist_ok=True)
+    os.makedirs(folder, exist_ok=True)
     if not os.path.exists(DATA_FILE):
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             f.write("")
+    os.chmod(DATA_FILE, 0o600)
 
 
 def normalize_mac(mac):
@@ -162,6 +186,7 @@ def load_entries():
 
 
 def save_entries(rows):
+    """Save entries safely and enforce strict permissions."""
     try:
         tmp = DATA_FILE + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
@@ -172,6 +197,7 @@ def save_entries(rows):
                 port = str(r.get("port", 9))
                 f.write(f"{mac}\t{name}\t{ip}\t{port}\n")
         os.replace(tmp, DATA_FILE)
+        os.chmod(DATA_FILE, 0o600)  # Ensure strict permissions after replace
         return None
     except Exception as e:
         return f"Failed to save data: {e}"
@@ -413,6 +439,8 @@ LOGIN_HTML = """<!DOCTYPE html>
 @app.route("/login", methods=["GET", "POST"])
 def login():
     ip = request.remote_addr
+
+    # --- Rate limiting ---
     if is_locked(ip):
         flash("Too many failed login attempts. Try again in 5 minutes.", "error")
         return render_template_string(LOGIN_HTML)
@@ -420,17 +448,26 @@ def login():
     if request.method == "POST":
         password = request.form.get("password", "").strip()
         stored_hash = load_password()
+
         if stored_hash and check_password_hash(stored_hash, password):
+            # --- Prevent session fixation ---
+            session.clear()  # generate a new session ID
+            session.permanent = True
+            app.permanent_session_lifetime = SESSION_TIMEOUT
+
             session["logged_in"] = True
             session["last_active"] = time.time()
+
             # Force password change if still default
             if check_password_hash(stored_hash, "changeme"):
                 flash("Default password must be changed.", "error")
                 return redirect(url_for("change_password"))
+
             return redirect(url_for("index"))
         else:
             register_failed(ip)
             flash("Invalid password", "error")
+
     return render_template_string(LOGIN_HTML)
 
 
@@ -438,6 +475,7 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
 
 @app.route("/")
 @login_required
@@ -639,4 +677,10 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--set-password":
         cli_set_password()
         sys.exit(0)
+
+    # --- Ensure files exist and enforce strict permissions ---
+    ensure_password_file()
+    ensure_data_file()
+    enforce_file_permissions()
+
     app.run(host="0.0.0.0", port=8080)
