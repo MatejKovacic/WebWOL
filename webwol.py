@@ -14,10 +14,8 @@
 # - Rate limiting is in-memory only - it resets when you restart the app.
 # - Implemented security headers that prevent basic attacks like MIME sniffing and clickjacking and only allows scripts, styles, and images from your server.
 # - HTTP-only and SameSite attributes set on session cookie.
-# - Validation of IP and port fields when adding/editing entries.
-#
-# TO DO:
 # - CSRF protection.
+# - Validation of IP and port fields when adding/editing entries.
 #
 # RECOMMENDATIONS:
 # - Change the host from 0.0.0.0 to specific IP address. Use a firewall to restrict access.
@@ -37,6 +35,8 @@ import ipaddress
 from wakeonlan import send_magic_packet
 
 from flask import Flask, request, render_template_string, redirect, url_for, session, flash
+from flask_wtf.csrf import CSRFProtect, generate_csrf, CSRFError
+
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # ---------------- Configuration ----------------
@@ -64,6 +64,9 @@ def enforce_file_permissions():
 
 # ---------------- App ----------------
 app = Flask(__name__)
+# Enable CSRF protection
+csrf = CSRFProtect(app)
+
 app.secret_key = SECRET_KEY
 
 # --- Session cookie hardening ---
@@ -427,6 +430,7 @@ LOGIN_HTML = """<!DOCTYPE html>
         {% endif %}
       {% endwith %}
       <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="password" name="password" placeholder="Password" required autofocus>
         <button type="submit">Login</button>
       </form>
@@ -436,29 +440,38 @@ LOGIN_HTML = """<!DOCTYPE html>
 </html>"""
 
 # ---------------- Routes ----------------
+@app.errorhandler(CSRFError)
+def handle_csrf_error(e):
+    flash("CSRF token missing or invalid. Please try again.", "error")
+    return redirect(request.referrer or url_for("index"))
+
+# ---------------- Routes with CSRF ----------------
+from flask_wtf.csrf import generate_csrf, CSRFError
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(e):
+    flash("CSRF token missing or invalid. Please try again.", "error")
+    return redirect(request.referrer or url_for("index"))
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     ip = request.remote_addr
 
-    # --- Rate limiting ---
     if is_locked(ip):
         flash("Too many failed login attempts. Try again in 5 minutes.", "error")
-        return render_template_string(LOGIN_HTML)
+        return render_template_string(LOGIN_HTML, csrf_token=generate_csrf())
 
     if request.method == "POST":
         password = request.form.get("password", "").strip()
         stored_hash = load_password()
 
         if stored_hash and check_password_hash(stored_hash, password):
-            # --- Prevent session fixation ---
-            session.clear()  # generate a new session ID
+            session.clear()
             session.permanent = True
             app.permanent_session_lifetime = SESSION_TIMEOUT
-
             session["logged_in"] = True
             session["last_active"] = time.time()
 
-            # Force password change if still default
             if check_password_hash(stored_hash, "changeme"):
                 flash("Default password must be changed.", "error")
                 return redirect(url_for("change_password"))
@@ -468,10 +481,11 @@ def login():
             register_failed(ip)
             flash("Invalid password", "error")
 
-    return render_template_string(LOGIN_HTML)
+    return render_template_string(LOGIN_HTML, csrf_token=generate_csrf())
 
 
 @app.route("/logout")
+@login_required
 def logout():
     session.clear()
     return redirect(url_for("login"))
@@ -485,6 +499,7 @@ def index():
         content = f"<div class='card error'>{html.escape(err)}</div>"
         return render_template_string(BASE_HTML, content=content, timeout=SESSION_TIMEOUT)
 
+    csrf_token = generate_csrf()
     content = "<h4>Computers</h4>"
     content += "<input id='search' class='searchbox' placeholder='Search by name, MAC, IP or port...'>"
     content += "<table><tr><th>Name</th><th>MAC</th><th>IP</th><th>Port</th><th>Action</th></tr>"
@@ -494,8 +509,11 @@ def index():
             f"<td>{html.escape(r['mac'])}</td>"
             f"<td>{html.escape(r['ip'])}</td>"
             f"<td>{r['port']}</td>"
-            f"<td class='actions'><form method='post' action='{url_for('wake')}' style='display:inline;'>"
-            f"<button class='wake' name='mac' value='{html.escape(r['mac'])}' type='submit'>Wake</button></form></td></tr>"
+            f"<td class='actions'>"
+            f"<form method='post' action='{url_for('wake')}' style='display:inline;'>"
+            f"<input type='hidden' name='csrf_token' value='{csrf_token}'>"
+            f"<button class='wake' name='mac' value='{html.escape(r['mac'])}' type='submit'>Wake</button>"
+            f"</form></td></tr>"
         )
     content += "</table>"
     return render_template_string(BASE_HTML, content=content, timeout=SESSION_TIMEOUT)
@@ -510,7 +528,6 @@ def wake():
 
     if mac and entry:
         try:
-            # Send WOL magic packet using Python library
             send_magic_packet(mac, ip_address=entry.get("ip"), port=entry.get("port"))
             flash(f"Sent WOL to {entry['name']} ({mac})", "wol")
         except Exception as e:
@@ -521,15 +538,28 @@ def wake():
     return redirect(url_for("index"))
 
 
+from flask_wtf.csrf import generate_csrf, validate_csrf
+
 @app.route("/edit", methods=["GET", "POST"])
 @login_required
 def edit():
     rows, err = load_entries()
     if err:
         content = f"<div class='card error'>{html.escape(err)}</div>"
-        return render_template_string(BASE_HTML, content=content, timeout=SESSION_TIMEOUT)
+        return render_template_string(
+            BASE_HTML,
+            content=content,
+            timeout=SESSION_TIMEOUT,
+            csrf_token=generate_csrf()
+        )
 
     if request.method == "POST":
+        try:
+            validate_csrf(request.form.get("csrf_token"))
+        except Exception:
+            flash("Invalid CSRF token", "error")
+            return redirect(url_for("edit"))
+
         action = request.form.get("action")
         idx = int(request.form.get("idx", "-1"))
 
@@ -545,12 +575,13 @@ def edit():
             elif ip is None:
                 flash("Invalid IP address", "error")
             else:
-                try: port = int(port)
-                except: port = 9
+                try:
+                    port = int(port)
+                except:
+                    port = 9
                 rows.append({"name": name, "mac": mac, "ip": ip, "port": port})
                 err = save_entries(rows)
-                if err: flash(err, "error")
-                else: flash(f"Added {name} ({mac})", "wol")
+                flash(err if err else f"Added {name} ({mac})", "error" if err else "wol")
 
         # --- UPDATE ---
         elif action == "update" and 0 <= idx < len(rows):
@@ -564,20 +595,20 @@ def edit():
             elif ip is None:
                 flash("Invalid IP address", "error")
             else:
-                try: port = int(port)
-                except: port = 9
+                try:
+                    port = int(port)
+                except:
+                    port = 9
                 rows[idx] = {"name": name, "mac": mac, "ip": ip, "port": port}
                 err = save_entries(rows)
-                if err: flash(err, "error")
-                else: flash(f"Updated {name} ({mac})", "wol")
+                flash(err if err else f"Updated {name} ({mac})", "error" if err else "wol")
 
         # --- DELETE ---
         elif action == "delete" and 0 <= idx < len(rows):
             name, mac = rows[idx]["name"], rows[idx]["mac"]
             del rows[idx]
             err = save_entries(rows)
-            if err: flash(err, "error")
-            else: flash(f"Deleted {name} ({mac})", "wol")
+            flash(err if err else f"Deleted {name} ({mac})", "error" if err else "wol")
 
         return redirect(url_for("edit"))
 
@@ -587,6 +618,7 @@ def edit():
     # Add new entry form
     content += (
         "<form method='post' style='margin-bottom:15px;'>"
+        f"<input type='hidden' name='csrf_token' value='{generate_csrf()}'>"
         "<input type='hidden' name='action' value='add'>"
         "<input type='text' name='name' placeholder='Name' required> "
         "<input type='text' name='mac' placeholder='MAC (AA:BB:CC:DD:EE:FF)' required> "
@@ -596,19 +628,19 @@ def edit():
         "</form>"
     )
 
-    # Existing entries table
-    content += "<table style='border-collapse: separate; border-spacing: 0 10px;'>"
-    content += "<tr><th>Name</th><th>MAC</th><th>IP</th><th>Port</th><th>Action</th></tr>"
+    # Existing entries table (tight layout restored)
+    content += "<table><tr><th>Name</th><th>MAC</th><th>IP</th><th>Port</th><th>Action</th></tr>"
 
     for idx, r in enumerate(rows):
         content += (
-            f"<tr style='background:#222; border-radius:6px;'>"
-            f"<td style='padding:8px 10px;'><input type='text' name='name' value='{html.escape(r['name'])}' form='form-{idx}' required></td>"
-            f"<td style='padding:8px 10px;'><input type='text' name='mac' value='{html.escape(r['mac'])}' form='form-{idx}' required></td>"
-            f"<td style='padding:8px 10px;'><input type='text' name='ip' value='{html.escape(r['ip'])}' form='form-{idx}'></td>"
-            f"<td style='padding:8px 10px;'><input type='number' name='port' value='{r['port']}' min='1' max='65535' form='form-{idx}'></td>"
-            f"<td class='actions' style='padding:8px 10px;'>"
+            f"<tr>"
+            f"<td><input type='text' name='name' value='{html.escape(r['name'])}' form='form-{idx}' required></td>"
+            f"<td><input type='text' name='mac' value='{html.escape(r['mac'])}' form='form-{idx}' required></td>"
+            f"<td><input type='text' name='ip' value='{html.escape(r['ip'])}' form='form-{idx}'></td>"
+            f"<td><input type='number' name='port' value='{r['port']}' min='1' max='65535' form='form-{idx}'></td>"
+            f"<td class='actions'>"
             f"<form id='form-{idx}' method='post' style='display:inline;'>"
+            f"<input type='hidden' name='csrf_token' value='{generate_csrf()}'>"
             f"<input type='hidden' name='idx' value='{idx}'>"
             f"<button class='edit' name='action' value='update'>Save</button> "
             f"<button type='button' class='delete' data-name='{html.escape(r['name'])}' data-mac='{html.escape(r['mac'])}'>Delete</button>"
@@ -618,7 +650,12 @@ def edit():
         )
     content += "</table>"
 
-    return render_template_string(BASE_HTML, content=content, timeout=SESSION_TIMEOUT)
+    return render_template_string(
+        BASE_HTML,
+        content=content,
+        timeout=SESSION_TIMEOUT,
+        csrf_token=generate_csrf()
+    )
 
 
 @app.route("/change_password", methods=["GET", "POST"])
@@ -629,30 +666,30 @@ def change_password():
         new = request.form.get("new_password", "")
         confirm = request.form.get("confirm_password", "")
         stored_hash = load_password()
+
         if not check_password_hash(stored_hash, old):
             flash("Old password incorrect", "error")
         elif new != confirm:
             flash("Passwords do not match", "error")
-        elif not new:
-            flash("New password cannot be empty", "error")
         elif len(new) < 8:
             flash("Password must be at least 8 characters long", "error")
         else:
             save_password(new)
             flash("Password updated successfully", "wol")
             return redirect(url_for("index"))
+
     content = (
         "<h4 style='text-align:center;'>Change Password</h4>"
-        "<div style='display:flex; justify-content:center;'>"
-        "<form method='post' style='width:320px; display:flex; flex-direction:column; gap:10px;'>"
+        "<form method='post' style='width:320px; margin:auto; display:flex; flex-direction:column; gap:10px;'>"
+        f"<input type='hidden' name='csrf_token' value='{generate_csrf()}'>"
         "<input type='password' name='old_password' placeholder='Old Password' required>"
         "<input type='password' name='new_password' placeholder='New Password' required>"
         "<input type='password' name='confirm_password' placeholder='Confirm New Password' required>"
         "<button type='submit'>Change</button>"
         "</form>"
-        "</div>"
     )
-    return render_template_string(BASE_HTML, content=content, timeout=SESSION_TIMEOUT)
+    return render_template_string(BASE_HTML, content=content, timeout=SESSION_TIMEOUT, csrf_token=generate_csrf())
+
 
 @app.after_request
 def add_security_headers(resp):
