@@ -30,6 +30,7 @@ You can install this application on a small device (for instance RaspberryPi), w
 - Login rate limiting implemented (3 failed attempts per IP, if exceeded, IP is blocked for 5 minutes).
 - Rate limiting is in-memory only - it resets when you restart the app.
 - Implemented security headers that prevent basic attacks like MIME sniffing and clickjacking and only allows scripts, styles, and images from your server.
+- Implemented CSRF protection.
 - Validation of IP and port fields when adding/editing entries.
 
 <img width="1148" height="632" alt="First login" src="https://github.com/user-attachments/assets/2bdf4d7c-3ca5-4af2-9df1-ae4ef78c9c42" />
@@ -182,6 +183,3 @@ Go to `Advanced` tab and look for options like:
 - `Wake on Magic Packet` - `Enabled`
 - `Wake on Pattern Match` - `optional`
 - `Shutdown Wake-On-Lan` - `Enabled`
-
-## To do
-- CSRF protection
