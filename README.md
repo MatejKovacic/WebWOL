@@ -5,15 +5,22 @@ WebWoL is a web interface to wake devices from sleep mode with Wake-on-LAN magic
 
 Suppose you have several computers in your office and you need to access them remotely. But some of them are powered off.
 
-Would you need to go to the office physically? Or call someone in the middle of the night to turn them on?
+So what would you do? Should you go to the office physically? Or call someone in the middle of the night to turn computers on? Not really feasible, is it?
 
-Well, there is a solution. You can wake them remotely. Wake-on-LAN is a computer networking standard that allows a computer to be turned on or awakened from sleep mode by a network message.
+**Well, there is a solution.** You can wake them remotely. **Wake-on-LAN** is a computer networking standard that allows a computer to be turned on or awakened from sleep mode by a special network message. Technically it works by sending a special broadcast Ethernet frame, which is called the *Magic Packet*.
 
-Of course, computer that you want to awaken must be on the same local network, but you can run wake command via web interface - remotely.
+When computer is "off" (technically it should be in so called *ACPI S5 state* (also known as *Soft Off*), which means that computer is in the shutdown state, but maintains a minimal power supply including power supply to the network card), network card stays partially awake, just enough to listen for this special Ethernet frame. When network card receives this "Magic Packet", it signals the motherboard’s power management controller that computer should wake (the same way as pressing the power button). And computer powers on.
 
-<img width="1282" height="786" alt="03_main_screen" src="https://github.com/user-attachments/assets/23b91058-8475-4c81-8a4f-f9dd6a8723ab" />
+<img width="1148" height="632" alt="Main screen" src="https://github.com/user-attachments/assets/1464214b-17a0-4a93-9e34-694613d78e64" />
 
-You can install this application on a small device (for instance RaspberryPi), which is accessible remotely (via VPN), and then you can wake computers rwmotely - with a single click.
+There are some requirements, though:
+- BIOS/UEFI must allow network card standby power (check your BIOS/UEFI settings and enable `Wake on LAN` or `Power On by PCI-E`).
+- Network card must support and be configured for Wake-on-LAN (check your operating system how to do that!).
+- Magic Packet must reach the network card, which means the machine sending WoL packets and the machine you are trying to wake must be o the same subnet and broadcast network messages should not be blocked by network router or switch).
+
+Also please note that WoL does not work over WiFi (except if a device has support for Wake-on-Wireless LAN (WoWLAN), which is rare) and that this application is designed to sent Magic Packets over IPv4 networks only.
+
+You can install this application on a small device (for instance RaspberryPi), which is accessible remotely (via VPN), and then you can wake your computers remotely - with a single click.
 
 ## Features
 - After the first login, password change is required (default password is `changeme`).
@@ -25,15 +32,15 @@ You can install this application on a small device (for instance RaspberryPi), w
 - Implemented security headers that prevent basic attacks like MIME sniffing and clickjacking and only allows scripts, styles, and images from your server.
 - Validation of IP and port fields when adding/editing entries.
 
-<img width="1279" height="786" alt="01_first_login" src="https://github.com/user-attachments/assets/08d1d0fd-3a8e-4b90-8175-67d2c88a819c" />
+<img width="1148" height="632" alt="First login" src="https://github.com/user-attachments/assets/2bdf4d7c-3ca5-4af2-9df1-ae4ef78c9c42" />
 
-<img width="1280" height="786" alt="02_add_servers" src="https://github.com/user-attachments/assets/186b5784-2349-4aa0-aabf-2d39f471a337" />
+<img width="1148" height="632" alt="Adding computers" src="https://github.com/user-attachments/assets/b84e92eb-6994-425b-b348-41f482d37d2b" />
 
-<img width="1282" height="786" alt="04_change_password" src="https://github.com/user-attachments/assets/48a66224-71ac-4c51-be33-f18ea8c6a906" />
+<img width="1148" height="632" alt="Change password" src="https://github.com/user-attachments/assets/58d26736-c8c3-4c1d-8946-fca1f9163b17" />
 
-## Installation
+## Installation (on Linux systems)
 
-Create system user, with no login shell and only this user can read and write data into the app folder (`/opt/webwol`):
+Create system user, with no login shell, and only this user can read and write data into the app folder (`/opt/webwol`):
 ```
 sudo adduser --system --group --home /opt/webwol webwol
 sudo mkdir -p /opt/webwol
@@ -47,11 +54,11 @@ Next create virtual Python environment.
 
 On Debian/Ubuntu systems, you need to install the `python3-venv` package first:
 ```
-apt install python3.12-venv
+sudo apt install python3.12-venv
 ```
 On Raspbian:
 ```
-apt-get install python3-venv
+sudo apt-get install python3-venv
 ```
 
 Then:
@@ -95,7 +102,6 @@ sudo systemctl enable webwol
 sudo systemctl start webwol
 sudo systemctl status webwol
 ```
-
 ## Notes
 
 Data are stored in `/opt/webwol/data/` (if you want to backup them):
@@ -111,6 +117,71 @@ Since rate limiting is in-memory only, you can restart app to reset it:
 ```
 sudo systemctl restart webwol
 ```
+
+### How to enable WoL on Linux systems?
+
+First, Wake-On-LAN must be enabled in BIOS.
+
+Then check if your network card supports WoL with command `sudo ethtool enp6s0` (if your network card is `enp6s0`). You should see something like:
+```
+...
+	Supports Wake-on: pumbg
+	Wake-on: g
+...
+```
+
+Meaning of the flags:
+- p: PHY activity (wake when link changes)
+- u: unicast packets
+- m: multicast packets
+- b: broadcast packets
+- g: Magic Packet
+
+If `Wake-on:` is not `g`, you can enable it with command `sudo ethtool -s enp1s0 wol g` (if your network card is `enp6s0`). Since these changes are not persistent during reboot, it is recommended to write SystemD service to enable Magic Packet support at reboot:
+
+`sudo nano /etc/systemd/system/wol.service`:
+
+Content:
+
+```
+[Unit]
+Description=Enable Wake-on-LAN
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/ethtool -s enp1s0 wol g
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Finally we enable and run the service:
+```
+sudo systemctl daemon-reload
+sudo systemctl enable wol.service
+sudo systemctl start wol.service
+```
+
+Please note that RaspberryPi computers do not support WoL, because their Ethernet network card is integrated into the SoC.
+
+### How to enable WoL on MacOS?
+
+On MacOS this feature is called *Wake for network access* (or *Wake for Ethernet network access*). You can enable this setting under `System Settings` - `Energy Saver` (or `Battery/Power Adapter`) - `Wake for network access`.
+
+Also, the Mac computer must remain in a low-power sleep state (so called "standby"). If it is completely shut down, WoL does not work.
+
+### How to enable WoL on Windows?
+
+First, Wake-On-LAN must be enabled in BIOS.
+
+Then open `Device Manager` - `Network adapters` - select your network card and go to `Properties`. Then go to `Power Management` tab, and check:
+- `Allow this device to wake the computer`
+- `Only allow a magic packet to wake the computer` (optional, usually safer)
+
+Go to `Advanced` tab and look for options like:
+- `Wake on Magic Packet` - `Enabled`
+- `Wake on Pattern Match` - `optional`
+- `Shutdown Wake-On-Lan` - `Enabled`
 
 ## To do
 - CSRF protection
