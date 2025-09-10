@@ -118,6 +118,9 @@ Since rate limiting is in-memory only, you can restart app to reset it:
 ```
 sudo systemctl restart webwol
 ```
+## Clients
+
+As mentioned, WoL must be enabled on client machines in order to be able to wake them up.
 
 ### How to enable WoL on Linux systems?
 
@@ -138,7 +141,7 @@ Meaning of the flags:
 - b: broadcast packets
 - g: Magic Packet
 
-If `Wake-on:` is not `g`, you can enable it with command `sudo ethtool -s enp1s0 wol g` (if your network card is `enp6s0`). Since these changes are not persistent during reboot, it is recommended to write SystemD service to enable Magic Packet support at reboot:
+If `Wake-on:` is not `g`, you can enable it with command `sudo ethtool -s enp6s0 wol g` (if your network card is `enp6s0`). Since these changes are not persistent during reboot, it is recommended to write SystemD service to enable Magic Packet support at reboot:
 
 `sudo nano /etc/systemd/system/wol.service`:
 
