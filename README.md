@@ -44,11 +44,17 @@ You can install this application on a small device (for instance RaspberryPi), w
 Create system user, with no login shell, and only this user can read and write data into the app folder (`/opt/webwol`):
 ```
 sudo adduser --system --group --home /opt/webwol webwol
+
 sudo mkdir -p /opt/webwol
 sudo chown -R webwol:webwol /opt/webwol
+
 sudo mkdir -p /opt/webwol/data
 sudo chown -R webwol:webwol /opt/webwol/data
 sudo chmod 700 /opt/webwol/data
+
+sudo mkdir -p /opt/webwol/static
+sudo chown -R webwol:webwol /opt/webwol/static
+sudo chmod 700 /opt/webwol/static
 ```
 
 Next create virtual Python environment.
@@ -72,6 +78,12 @@ Copy script content into `/opt/webwol/webwol.py`
 ```
 sudo scp webwol.py /opt/webwol/
 sudo chown -R webwol:webwol /opt/webwol/webwol.py
+```
+
+Copy `favicon.ico` to `/opt/webwol/static`
+```
+sudo scp favicon.ico /opt/webwol/static/
+sudo chown -R webwol:webwol /opt/webwol/favicon.ico
 ```
 
 Create SystemD service to run WebWoL:
