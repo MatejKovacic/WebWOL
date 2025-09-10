@@ -234,6 +234,7 @@ BASE_HTML = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <title>WebWOL</title>
   <style>
     body { margin:0; font-family: Arial, sans-serif; background:#111; color:#eee; }
@@ -320,6 +321,7 @@ LOGIN_HTML = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <title>WebWOL - Sign in</title>
   <style>
     body { background:#111; color:#eee; font-family:Arial,sans-serif; margin:0; }
