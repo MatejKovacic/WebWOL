@@ -211,11 +211,15 @@ def save_entries(rows):
 def session_management():
     session.permanent = True
     app.permanent_session_lifetime = SESSION_TIMEOUT
-    if "last_active" in session and time.time() - session["last_active"] > SESSION_TIMEOUT:
-        session.clear()
-        flash("Session timed out", "error")
-        return redirect(url_for("login"))
-    session["last_active"] = time.time()
+    now = time.time()
+    if "last_active" in session:
+        if now - session["last_active"] > SESSION_TIMEOUT:
+            session.clear()
+            flash("Session timed out", "error")
+            return redirect(url_for("login"))
+    session["last_active"] = now
+    # Store exact server-side expiration timestamp
+    session["expires_at"] = now + SESSION_TIMEOUT
 
 
 def login_required(f):
@@ -400,27 +404,28 @@ BASE_HTML = """<!DOCTYPE html>
 
       // --- Session countdown ---
       const timerEl = document.getElementById("session-timer");
-      {% if timeout %}
-        let remaining = {{ timeout }};
-        function updateTimer() {
-            let m = Math.floor(remaining/60);
-            let s = remaining % 60;
-            timerEl.textContent = "Auto logout in " + m + "m " + s + "s";
-            if (remaining <= 60) {
-                timerEl.style.color = "red";
-                timerEl.style.fontWeight = "bold";
-            } else {
-               timerEl.style.color = "#aaa";
-               timerEl.style.fontWeight = "normal";
+      {% if expires_at %}
+          function updateTimer() {
+              let remaining = {{ expires_at }} - Math.floor(Date.now() / 1000);
+              let m = Math.floor(remaining / 60);
+              let s = remaining % 60;
+              timerEl.textContent = "Auto logout in " + m + "m " + s + "s";
+
+              if (remaining <= 60) {
+                  timerEl.style.color = "red";
+                  timerEl.style.fontWeight = "bold";
+              } else {
+                 timerEl.style.color = "#aaa";
+                 timerEl.style.fontWeight = "normal";
+              }
+
+              if (remaining > 0) {
+                  setTimeout(updateTimer, 1000);
+              } else {
+                  window.location.href = "{{ url_for('logout') }}";
+              }
           }
-           if (remaining > 0) {
-             remaining--;
-            setTimeout(updateTimer, 1000);
-          } else {
-            window.location.href = "{{ url_for('logout') }}";
-          }
-        }
-        updateTimer();
+          updateTimer();
       {% endif %}
 
       // --- Flash auto-fade ---
@@ -577,7 +582,7 @@ def index():
     rows, err = load_entries()
     if err:
         content = f"<div class='card error'>{html.escape(err)}</div>"
-        return render_template_string(BASE_HTML, content=content, timeout=SESSION_TIMEOUT)
+        return render_template_string(BASE_HTML, content=content, expires_at=int(session["expires_at"]))
 
     csrf_token = generate_csrf()
     content = "<h4>Computers</h4>"
@@ -600,7 +605,7 @@ def index():
             f"</tr>"
         )
     content += "</table>"
-    return render_template_string(BASE_HTML, content=content, timeout=SESSION_TIMEOUT)
+    return render_template_string(BASE_HTML, content=content, expires_at=int(session["expires_at"]))
 
 
 @app.route("/wake", methods=["POST"])
@@ -633,7 +638,7 @@ def edit():
         return render_template_string(
             BASE_HTML,
             content=content,
-            timeout=SESSION_TIMEOUT,
+            expires_at=int(session["expires_at"]),
             csrf_token=generate_csrf()
         )
 
@@ -737,7 +742,7 @@ def edit():
     return render_template_string(
         BASE_HTML,
         content=content,
-        timeout=SESSION_TIMEOUT,
+        expires_at=int(session["expires_at"]),
         csrf_token=generate_csrf()
     )
 
@@ -772,10 +777,16 @@ def change_password():
         "<button type='submit'>Change</button>"
         "</form>"
     )
-    return render_template_string(BASE_HTML, content=content, timeout=SESSION_TIMEOUT, csrf_token=generate_csrf())
+    return render_template_string(BASE_HTML, content=content, expires_at=int(session["expires_at"]), csrf_token=generate_csrf())
 
 
 @app.after_request
+def add_no_cache_headers(response):
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
 def add_security_headers(resp):
     # Prevent MIME type sniffing
     resp.headers["X-Content-Type-Options"] = "nosniff"
@@ -791,7 +802,6 @@ def add_security_headers(resp):
         "img-src 'self' data:"
     )
     return resp
-
 
 # ---------------- Main ----------------
 if __name__ == "__main__":
