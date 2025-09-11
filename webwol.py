@@ -235,7 +235,7 @@ BASE_HTML = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
-  <title>WebWOL</title>
+  <title>WebWoL</title>
   <style>
     body { margin:0; font-family: Arial, sans-serif; background:#111; color:#eee; }
     nav { background:#222; padding:10px 20px; display:flex; justify-content:space-between; align-items:center; }
@@ -268,7 +268,12 @@ BASE_HTML = """<!DOCTYPE html>
 </head>
 <body>
   <nav>
-    <div id="title">WebWOL</div>
+    <div id="title">
+      <img src="{{ url_for('static', filename='favicon.ico') }}"
+           alt="Logo"
+           style="width:18px; height:18px; vertical-align:middle; margin-right:2px;">
+      WebWoL
+    </div>
     <div>
       <a href="{{ url_for('index') }}">Home</a>
       <a href="{{ url_for('edit') }}">Edit</a>
@@ -310,7 +315,96 @@ BASE_HTML = """<!DOCTYPE html>
   </div>
 
   <script>
-    /* Your existing JS (search, session timer, flash fade, modal) */
+    document.addEventListener("DOMContentLoaded", function() {
+      // --- Search filter ---
+      const search = document.getElementById("search");
+      if (search) {
+        search.addEventListener("keyup", function() {
+          const filter = search.value.toLowerCase();
+          document.querySelectorAll("table tr").forEach((row, idx) => {
+            if (idx === 0) return;
+            row.style.display = row.innerText.toLowerCase().includes(filter) ? "" : "none";
+          });
+        });
+      }
+
+      // --- Session countdown ---
+      const timerEl = document.getElementById("session-timer");
+      {% if timeout %}
+        let remaining = {{ timeout }};
+        function updateTimer() {
+            let m = Math.floor(remaining/60);
+            let s = remaining % 60;
+            timerEl.textContent = "Auto logout in " + m + "m " + s + "s";
+            if (remaining <= 60) {
+                timerEl.style.color = "red";
+                timerEl.style.fontWeight = "bold";
+            } else {
+               timerEl.style.color = "#aaa";
+               timerEl.style.fontWeight = "normal";
+          }
+           if (remaining > 0) {
+             remaining--;
+            setTimeout(updateTimer, 1000);
+          } else {
+            window.location.href = "{{ url_for('logout') }}";
+          }
+        }
+        updateTimer();
+      {% endif %}
+
+      // --- Flash auto-fade ---
+      const flashes = document.querySelectorAll(".flash-container .card");
+      if (flashes.length > 0) {
+        setTimeout(() => {
+          flashes.forEach(f => {
+            f.style.transition = "opacity 1s";
+            f.style.opacity = "0";
+            setTimeout(() => f.remove(), 1000);
+          });
+        }, 4000);
+      }
+
+      // --- Delete confirmation modal ---
+      const modal = document.getElementById("confirm-modal");
+      const msg = document.getElementById("confirm-message");
+      const yes = document.getElementById("confirm-yes");
+      const no = document.getElementById("confirm-no");
+      let currentForm = null;
+
+      document.querySelectorAll("button.delete").forEach(btn => {
+        btn.addEventListener("click", function(e) {
+          e.preventDefault();
+          currentForm = btn.closest("form");
+          const name = btn.getAttribute("data-name");
+          const mac = btn.getAttribute("data-mac");
+          msg.textContent = `Delete ${name} (${mac})?`;
+          modal.style.display = "flex";
+        });
+      });
+
+      yes.addEventListener("click", function() {
+        if (currentForm) {
+          // Remove previous delete action input if exists
+          const old = currentForm.querySelector("input[name='action'][value='delete']");
+          if (old) old.remove();
+
+          // Append delete action
+          let hidden = document.createElement("input");
+          hidden.type = "hidden";
+          hidden.name = "action";
+          hidden.value = "delete";
+          currentForm.appendChild(hidden);
+          currentForm.submit();
+        }
+        modal.style.display = "none";
+      });
+
+      no.addEventListener("click", function() {
+        modal.style.display = "none";
+        currentForm = null;
+      });
+    });
   </script>
 </body>
 </html>"""
@@ -322,7 +416,7 @@ LOGIN_HTML = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
-  <title>WebWOL - Sign in</title>
+  <title>WebWoL - Sign in</title>
   <style>
     body { background:#111; color:#eee; font-family:Arial,sans-serif; margin:0; }
     .login-wrap { display:flex; align-items:center; justify-content:center; min-height:100vh; }
@@ -337,7 +431,7 @@ LOGIN_HTML = """<!DOCTYPE html>
 <body>
   <div class="login-wrap">
     <div class="login-card">
-      <h4>WebWOL - Sign in</h4>
+      <h4>WebWoL - Sign in</h4>
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           {% for category, msg in messages %}
@@ -637,3 +731,4 @@ if __name__ == "__main__":
     enforce_file_permissions()
 
     app.run(host="0.0.0.0", port=8080)
+
