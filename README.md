@@ -11,7 +11,7 @@ So what would you do? Should you go to the office physically? Or call someone in
 
 When computer is "off" (technically it should be in so called *ACPI S5 state* (also known as *Soft Off*), which means that computer is in the shutdown state, but maintains a minimal power supply including power supply to the network card), network card stays partially awake, just enough to listen for this special Ethernet frame. When network card receives this "Magic Packet", it signals the motherboard’s power management controller that computer should wake (the same way as pressing the power button). And computer powers on.
 
-<img width="1148" height="632" alt="Main screen" src="https://github.com/user-attachments/assets/1464214b-17a0-4a93-9e34-694613d78e64" />
+<img width="1148" height="632" alt="Main screen" src="03_main_screen.png" />
 
 There are some requirements, though:
 - BIOS/UEFI must allow network card standby power (check your BIOS/UEFI settings and enable `Wake on LAN` or `Power On by PCI-E`).
@@ -32,12 +32,13 @@ You can install this application on a small device (for instance RaspberryPi), w
 - Implemented security headers that prevent basic attacks like MIME sniffing and clickjacking and only allows scripts, styles, and images from your server.
 - Implemented CSRF protection.
 - Validation of IP and port fields when adding/editing entries.
+- Mobile friendly.
 
-<img width="1148" height="632" alt="First login" src="https://github.com/user-attachments/assets/2bdf4d7c-3ca5-4af2-9df1-ae4ef78c9c42" />
+<img width="1148" height="632" alt="First login" src="01_first_login.png" />
 
-<img width="1148" height="632" alt="Adding computers" src="https://github.com/user-attachments/assets/b84e92eb-6994-425b-b348-41f482d37d2b" />
+<img width="1148" height="632" alt="Adding computers" src="02_add_servers.png" />
 
-<img width="1148" height="632" alt="Change password" src="https://github.com/user-attachments/assets/58d26736-c8c3-4c1d-8946-fca1f9163b17" />
+<img width="1148" height="632" alt="Change password" src="04_change_password.png" />
 
 ## Installation (on Linux systems)
 
@@ -130,9 +131,12 @@ Since rate limiting is in-memory only, you can restart app to reset it:
 ```
 sudo systemctl restart webwol
 ```
+
+<img width="266" height="500" alt="Mobile version" src="mobile_version.png" />
+
 ## Clients
 
-As mentioned, WoL must be enabled on client machines in order to be able to wake them up.
+As mentioned, **WoL must be enabled on client machines** in order to be able to wake them up. But you can wake them with any machine, even if it does not support WoL (which is the case of RasbperryPi).
 
 ### How to enable WoL on Linux systems?
 
