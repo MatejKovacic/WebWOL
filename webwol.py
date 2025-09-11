@@ -264,6 +264,76 @@ BASE_HTML = """<!DOCTYPE html>
                      background:rgba(0,0,0,0.7); align-items:center; justify-content:center; z-index:9999; }
     #confirm-modal .box { background:#222; padding:20px; border-radius:12px; width:300px; text-align:center; }
     #confirm-modal button { margin-top:10px; }
+
+    /* General table styling */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    /* Prevent horizontal scrollbars */
+    html, body {
+      overflow-x: hidden;
+    }
+
+    /* Make sure all elements respect screen width */
+    * {
+      box-sizing: border-box;
+      max-width: 100%;
+    }
+    /* Responsive tables */
+    @media (max-width: 600px) {
+      table, thead, tbody, th, td, tr {
+        display: block;
+        width: 100%;
+      }
+      thead { display: none; } /* hide header row */
+      tr {
+        margin-bottom: 12px;
+        border: 1px solid #333;
+        border-radius: 6px;
+        padding: 8px;
+        background: #1a1a1a;
+      }
+      td {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px;
+      }
+      td::before {
+        content: attr(data-label);
+        flex: 0 0 40%;
+        font-weight: bold;
+        color: #ccc;
+        padding-right: 10px;
+      }
+      td.actions {
+        justify-content: flex-start;
+      }
+
+      /* Navbar stacks vertically */
+      nav { 
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      nav a { 
+        margin: 5px 0; 
+        display: inline-block;
+      }
+
+      /* Container padding */
+      .container {
+        padding: 10px;
+      }
+
+      /* Stack inputs/buttons in forms */
+      form input, form button {
+        display: block;
+        width: 100%;
+        margin: 6px 0;
+        box-sizing: border-box;
+      }
+    }
   </style>
 </head>
 <body>
@@ -298,7 +368,7 @@ BASE_HTML = """<!DOCTYPE html>
   </div>
 
   <footer>
-    <a href="https://github.com/MatejKovacic/WebWOL/" target="_blank">WebWOL</a> - web interface to wake devices from sleep mode with Wake-on-LAN magic packets.
+    <a href="https://codeberg.org/MatejKovacic/WebWOL/" target="_blank">WebWOL</a> - web interface to wake devices from sleep mode with Wake-on-LAN magic packets.
     Auto logout after 15 minutes. MAC format: AA:BB:CC:DD:EE:FF
     (GPL) <a href="https://telefoncek.si" target="_blank">Matej Kovačič</a>, 2025.
   </footer>
@@ -513,17 +583,21 @@ def index():
     content = "<h4>Computers</h4>"
     content += "<input id='search' class='searchbox' placeholder='Search by name, MAC, IP or port...'>"
     content += "<table><tr><th>Name</th><th>MAC</th><th>IP</th><th>Port</th><th>Action</th></tr>"
+
     for r in rows:
         content += (
-            f"<tr><td>{html.escape(r['name'])}</td>"
-            f"<td>{html.escape(r['mac'])}</td>"
-            f"<td>{html.escape(r['ip'])}</td>"
-            f"<td>{r['port']}</td>"
-            f"<td class='actions'>"
+            f"<tr>"
+            f"<td data-label='Name'>{html.escape(r['name'])}</td>"
+            f"<td data-label='MAC'>{html.escape(r['mac'])}</td>"
+            f"<td data-label='IP'>{html.escape(r['ip'])}</td>"
+            f"<td data-label='Port'>{r['port']}</td>"
+            f"<td class='actions' data-label='Actions'>"
             f"<form method='post' action='{url_for('wake')}' style='display:inline;'>"
             f"<input type='hidden' name='csrf_token' value='{csrf_token}'>"
             f"<button class='wake' name='mac' value='{html.escape(r['mac'])}' type='submit'>Wake</button>"
-            f"</form></td></tr>"
+            f"</form>"
+            f"</td>"
+            f"</tr>"
         )
     content += "</table>"
     return render_template_string(BASE_HTML, content=content, timeout=SESSION_TIMEOUT)
@@ -731,4 +805,3 @@ if __name__ == "__main__":
     enforce_file_permissions()
 
     app.run(host="0.0.0.0", port=8080)
-
